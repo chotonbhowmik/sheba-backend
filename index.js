@@ -23,7 +23,7 @@ async function run() {
     const appointmentsCollection = client
       .db("appointments")
       .collection("appointments");
-
+    const productsCollection = client.db("appointments").collection("products");
     // appointments api start from here
 
     app.get("/appointments", async (req, res) => {
@@ -32,21 +32,20 @@ async function run() {
       res.send(result);
     });
 
-  app.post("/appointments", async (req, res) => {
-    const appointment = req.body;
-    const existingAppointment = await appointmentsCollection.findOne({
-      date: appointment.date,
-      timeSlot: appointment.timeSlot,
+    app.post("/appointments", async (req, res) => {
+      const appointment = req.body;
+      const existingAppointment = await appointmentsCollection.findOne({
+        date: appointment.date,
+        timeSlot: appointment.timeSlot,
+      });
+
+      if (existingAppointment) {
+        return res.status(400).send({ message: "Slot already booked!" });
+      }
+
+      const result = await appointmentsCollection.insertOne(appointment);
+      res.send(result);
     });
-
-    if (existingAppointment) {
-      return res.status(400).send({ message: "Slot already booked!" });
-    }
-
-    const result = await appointmentsCollection.insertOne(appointment);
-    res.send(result);
-  });
-
 
     app.get("/available-slots", async (req, res) => {
       const slots = ["4:00 – 5:00", "5:00 – 6:00", "6:00 – 7:00"];
@@ -66,6 +65,39 @@ async function run() {
         res.send(availableSlots);
       } catch (error) {
         console.error("Error fetching available slots:", error);
+        res.status(500).send("Internal Server Error");
+      }
+    });
+    app.get("/products", async (req, res) => {
+      try {
+        const products = await productsCollection.find().toArray();
+        const processedItems = products
+          .map((item) => {
+            const price = parseFloat(item.price);
+            return {
+              ...item,
+              price: price,
+              priceWithVAT: price * 1.15,
+            };
+          })
+          .filter((item) => item.priceWithVAT > 50);
+
+        const totalPrice = processedItems.reduce(
+          (acc, item) => acc + item.priceWithVAT,
+          0
+        );
+        const priceWithoutTax = processedItems.reduce(
+          (acc, item) => acc + item.price,
+          0
+        );
+
+        res.send({
+          processedItems,
+          totalPrice,
+          priceWithoutTax,
+        });
+      } catch (error) {
+        console.error("Error processing products:", error);
         res.status(500).send("Internal Server Error");
       }
     });
